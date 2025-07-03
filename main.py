@@ -16,130 +16,81 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.
 # Clean and format Gemini output
 def clean_gemini_output(text):
     print(f"[DEBUG] Original text before cleaning: {text}")
-    
+
     # Remove disclaimer first
     text = re.sub(r"\*\*Disclaimer:\*\*.*", "", text, flags=re.DOTALL)
-    
+
     # Split into lines for processing
     lines = [line.strip() for line in text.split('\n') if line.strip()]
-    
+
     stocks = []
-    current_stock = None
-    
+    current_stock = {}
+
     print(f"[DEBUG] Processing {len(lines)} lines from Gemini response")
-    
+
     for i, line in enumerate(lines):
         print(f"[DEBUG] Line {i}: '{line}'")
-        
+
         # Skip intro lines
         if any(skip_word in line.lower() for skip_word in ['okay', 'here are', 'suggest', 'disclaimer']):
             print(f"[DEBUG] Skipping intro line: {line}")
             continue
-        
-        # Look for stock names (numbered or bold format)
-        # Pattern: "1. **Stock Name**" or "**Stock Name**"
-        stock_match = re.search(r'(?:\d+\.?\s*)?\*\*([^*]+?)\*\*', line)
-        if stock_match:
-            # Save previous stock if exists
-            if current_stock and current_stock.get('name'):
-                stocks.append(current_stock)
-                print(f"[DEBUG] Saved stock: {current_stock}")
-            
-            # Start new stock
-            stock_name = stock_match.group(1).strip()
-            # Clean stock name (remove company info in parentheses)
-            stock_name = re.sub(r'\s*\([^)]*\)\s*', ' ', stock_name).strip()
-            current_stock = {'name': stock_name}
-            print(f"[DEBUG] Found new stock: {stock_name}")
-            continue
-        
-        # If we have a current stock, look for its details
-        if current_stock:
-            # Look for entry price
-            if not current_stock.get('entry'):
-                entry_match = re.search(r'(?:entry|price|buy|current).*?(?:₹|rs\.?|inr)?\s*([0-9,.-]+)', line, re.IGNORECASE)
-                if entry_match:
-                    current_stock['entry'] = entry_match.group(1)
-                    print(f"[DEBUG] Found entry: {current_stock['entry']}")
-                    continue
-            
-            # Look for target price
-            if not current_stock.get('target'):
-                target_match = re.search(r'(?:target|exit|sell|goal).*?(?:₹|rs\.?|inr)?\s*([0-9,.-]+)', line, re.IGNORECASE)
-                if target_match:
-                    current_stock['target'] = target_match.group(1)
-                    print(f"[DEBUG] Found target: {current_stock['target']}")
-                    continue
-            
-            # Look for reason
-            if not current_stock.get('reason'):
-                reason_match = re.search(r'(?:reason|growth|because|why|due to)[:.\-\s]*(.+)', line, re.IGNORECASE)
-                if reason_match:
-                    current_stock['reason'] = reason_match.group(1).strip()
-                    print(f"[DEBUG] Found reason: {current_stock['reason']}")
-                    continue
-                
-                # If line contains explanatory text (more than 15 chars, no numbers)
-                if len(line) > 15 and not re.search(r'[0-9]', line):
-                    current_stock['reason'] = line
-                    print(f"[DEBUG] Using line as reason: {line}")
-                    continue
-        
-        # Look for bullet point format with multiple prices
-        bullet_match = re.search(r'[•\-*]\s*(.+?)(?:₹|rs\.?|inr)?\s*([0-9,.-]+).*?(?:₹|rs\.?|inr)?\s*([0-9,.-]+)', line, re.IGNORECASE)
-        if bullet_match:
-            name = bullet_match.group(1).strip()
-            entry = bullet_match.group(2)
-            target = bullet_match.group(3)
-            
-            # Clean name
-            name = re.sub(r'[:\-]+', '', name).strip()
-            if name and len(name) > 2:
-                stocks.append({
-                    'name': name,
-                    'entry': entry,
-                    'target': target,
-                    'reason': 'Market analysis suggests growth potential'
-                })
-                print(f"[DEBUG] Found bullet point stock: {name}")
-    
+
+        # Match key-value pairs like "**Stock Name:** Hindustan Unilever Ltd. (HUL)"
+        key_value_match = re.match(r"\*\*([^:]+):\*\*\s*(.+)", line)
+        if key_value_match:
+            key = key_value_match.group(1).strip().lower()
+            value = key_value_match.group(2).strip()
+
+            if key == "stock name":
+                # Save the previous stock if it has a name
+                if current_stock.get('name'):
+                    stocks.append(current_stock)
+                    print(f"[DEBUG] Saved stock: {current_stock}")
+                # Start a new stock entry
+                current_stock = {'name': value}
+                print(f"[DEBUG] Found new stock: {value}")
+            elif key in ["entry price", "exit target", "reason for growth", "company summary"]:
+                current_stock[key.replace(' ', '_')] = value
+                print(f"[DEBUG] Added {key}: {value}")
+
     # Don't forget the last stock
-    if current_stock and current_stock.get('name'):
+    if current_stock.get('name'):
         stocks.append(current_stock)
         print(f"[DEBUG] Saved final stock: {current_stock}")
-    
+
     print(f"[DEBUG] Total stocks found: {len(stocks)}")
-    
+
     # Format the results
     if stocks:
         formatted = []
         for stock in stocks:
             name = stock.get('name', 'Unknown Stock')
-            entry = stock.get('entry', 'TBD')
-            target = stock.get('target', 'TBD')
-            reason = stock.get('reason', 'Strong fundamentals and market outlook')
-            
+            entry = stock.get('entry_price', 'TBD')
+            target = stock.get('exit_target', 'TBD')
+            reason = stock.get('reason_for_growth', 'Strong fundamentals and market outlook')
+
             # Add currency symbol if not present
             if entry != 'TBD' and not any(symbol in entry for symbol in ['₹', 'Rs', 'INR']):
                 entry = f"₹{entry}"
             if target != 'TBD' and not any(symbol in target for symbol in ['₹', 'Rs', 'INR']):
                 target = f"₹{target}"
-            
+
             formatted.append(f"""🔹 *{name}*
 • *Entry:* {entry}
 • *Target:* {target}
 • *Why:* {reason}
 """)
-        
+
         result = "\n".join(formatted).strip()
         print(f"[DEBUG] Final formatted result: {result}")
         return result
-    
+
     # If no stocks found, return cleaned original text
     print("[DEBUG] No stocks found, returning cleaned original text")
     cleaned = re.sub(r'\*{3,}', '**', text)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
-    
+
     return cleaned if cleaned and len(cleaned) > 50 else "I couldn't find specific stock recommendations in the response. Please try asking for a different sector."
 
 # /start command
