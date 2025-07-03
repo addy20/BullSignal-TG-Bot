@@ -50,7 +50,7 @@ def clean_gemini_output(text):
                 # Start a new stock entry
                 current_stock = {'name': value}
                 print(f"[DEBUG] Found new stock: {value}")
-            elif key in ["entry price", "exit target", "reason for growth", "company summary"]:
+            elif key in ["entry price", "exit target", "reason for growth"]:
                 current_stock[key.replace(' ', '_')] = value
                 print(f"[DEBUG] Added {key}: {value}")
 
@@ -61,6 +61,10 @@ def clean_gemini_output(text):
 
     print(f"[DEBUG] Total stocks found: {len(stocks)}")
 
+    # Limit to 3 stocks
+    stocks = stocks[:3]
+    print(f"[DEBUG] Limiting to 3 stocks: {stocks}")
+
     # Format the results
     if stocks:
         formatted = []
@@ -70,17 +74,7 @@ def clean_gemini_output(text):
             target = stock.get('exit_target', 'TBD')
             reason = stock.get('reason_for_growth', 'Strong fundamentals and market outlook')
 
-            # Add currency symbol if not present
-            if entry != 'TBD' and not any(symbol in entry for symbol in ['₹', 'Rs', 'INR']):
-                entry = f"₹{entry}"
-            if target != 'TBD' and not any(symbol in target for symbol in ['₹', 'Rs', 'INR']):
-                target = f"₹{target}"
-
-            formatted.append(f"""🔹 *{name}*
-• *Entry:* {entry}
-• *Target:* {target}
-• *Why:* {reason}
-""")
+            formatted.append(f"{name} | Entry Price: {entry} | Exit Price: {target} | Reason: {reason}")
 
         result = "\n".join(formatted).strip()
         print(f"[DEBUG] Final formatted result: {result}")
